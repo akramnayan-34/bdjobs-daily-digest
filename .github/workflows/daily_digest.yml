@@ -2,14 +2,12 @@ name: BDjobs Daily Digest
 
 on:
   schedule:
-    # 2:30 AM UTC = 8:30 AM Bangladesh Standard Time (UTC+6)
     - cron: '30 2 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   run-digest:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -20,10 +18,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        run: pip install -r requirements.txt
+        run: pip install requests
 
-      - name: Run Digest Script
+      - name: Run AI Digest Script
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python digest.py
