@@ -41,16 +41,42 @@ Evaluate the following jobs and return ONLY the final Markdown output:
 
 
 def fetch_bdjobs():
-    """Fetches the latest job listings strictly for the NGO/Development category."""
-    # Notice the &fcatId=12 added to the end of the URL
+    """Fetches the latest job listings with robust parsing for different API structures."""
     url = "https://gateway.bdjobs.com/recruitment-account-test/api/JobSearch/GetJobSearch?isPro=1&rpp=50&pg=1&fcatId=12"
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://jobs.bdjobs.com/",
+        "Origin": "https://jobs.bdjobs.com"
     }
+    
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        return response.json().get("data", {}).get("jobList", [])
+        response = requests.get(url, headers=headers, timeout=20)
+        
+        if response.status_code != 200:
+            print(f"Blocked by BDjobs! Status Code: {response.status_code}")
+            return []
+            
+        data = response.json()
+        jobs = []
+        
+        # Bulletproof extraction: Handle whatever structure the API throws at us
+        if isinstance(data, list):
+            # Scenario A: API returns the list directly
+            jobs = data
+        elif isinstance(data, dict):
+            # Scenario B: API nests it inside 'data' or 'jobList'
+            inner_data = data.get("data", data)
+            if isinstance(inner_data, list):
+                jobs = inner_data
+            elif isinstance(inner_data, dict):
+                jobs = inner_data.get("jobList", [])
+                
+        print(f"Successfully fetched {len(jobs)} jobs from BDjobs API.")
+        return jobs
+        
     except Exception as e:
         print(f"Error fetching BDjobs: {e}")
         return []
