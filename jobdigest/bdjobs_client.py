@@ -48,6 +48,8 @@ def fetch_bdjobs_list() -> list:
                 if response.status_code != 200:
                     print(f"BDJobs list blocked/failed (cat={cat_id} "
                           f"page={page}): status {response.status_code}")
+                    print(f"DEBUG response body (first 500 chars): "
+                          f"{response.text[:500]}")
                     break
                 data = response.json()
             except Exception as e:
@@ -57,6 +59,23 @@ def fetch_bdjobs_list() -> list:
 
             page_jobs = _extract_job_list(data)
             if not page_jobs:
+                # DEBUG: dump the actual shape so we can see why extraction
+                # found nothing. Remove this block once the real structure
+                # is confirmed and _extract_job_list is fixed accordingly.
+                if isinstance(data, dict):
+                    print(f"DEBUG: response top-level keys: "
+                          f"{list(data.keys())}")
+                    inner = data.get("data", data)
+                    if isinstance(inner, dict):
+                        print(f"DEBUG: inner 'data' keys: "
+                              f"{list(inner.keys())}")
+                elif isinstance(data, list):
+                    print(f"DEBUG: response is a list of length "
+                          f"{len(data)}")
+                else:
+                    print(f"DEBUG: unexpected response type: {type(data)}")
+                print(f"DEBUG raw response (first 800 chars): "
+                      f"{str(data)[:800]}")
                 break  # no more pages
 
             new_count = 0
