@@ -1,109 +1,125 @@
 import os
+import json
 import requests
 
-# ---------------- TARGET KEYWORDS & LOCATIONS ----------------
-# Edit these keywords to match your exact preferred roles
-TARGET_KEYWORDS = [
-    "program officer",
-    "project coordinator",
-    "social work",
-    "ngo",
-    "monitoring",
-    "evaluator",
-    "project officer",
-]
-
-# Add specific locations (e.g., ["Sylhet", "Dhaka"]) or leave empty [] to match all
-PREFERRED_LOCATIONS = []
-
+# ==================== CONFIGURATION ====================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-# -----------------------------------------------------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Paste your entire prompt here (I have condensed it for the template, 
+# but you should paste your FULL candidate profile and rules between the quotes)
+RECRUITER_PROMPT = """
+You are my PERSONAL CAREER RECRUITER. Your objective is to identify only the positions Md Akram Hussain (MSS in Social Work, 4+ years NGO experience) should seriously consider applying for.
+
+Here is my profile summary:
+- Expertise: Programme Management, Child Protection, MEAL, Social Work.
+- Nationality: Bangladeshi
+- Location: Sylhet, Bangladesh
+
+CRITICAL ELIGIBILITY:
+- Reject female-only jobs.
+- Reject jobs requiring strict specialized experience I don't have.
+- Reject jobs that don't match my career level.
+
+OUTPUT FORMAT:
+Generate a personalized Daily Telegram Output using the EXACT format provided in my instructions:
+🔥 DAILY PERSONALIZED JOB SHORTLIST
+[DATE]
+
+🥇 PRIORITY 1
+[Organization] - [Job Title]
+📍 Location: ... 
+(etc. including WHY YOU, MAIN GAP, VERDICT, Application Link)
+
+EXCLUDED JOBS
+(List up to 3 notable jobs excluded and the specific reason).
+
+Evaluate the following jobs and return ONLY the final Markdown output:
+"""
+# =======================================================
 
 
 def fetch_bdjobs():
-    """Fetches the latest job postings from BDjobs Gateway."""
+    """Fetches the latest job listings from the BDjobs Gateway API."""
     url = "https://gateway.bdjobs.com/recruitment-account-test/api/JobSearch/GetJobSearch?isPro=1&rpp=50&pg=1"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
-
     try:
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        data = response.json()
-        return data.get("data", {}).get("jobList", [])
+        return response.json().get("data", {}).get("jobList", [])
     except Exception as e:
         print(f"Error fetching BDjobs: {e}")
         return []
 
 
-def filter_jobs(job_list):
-    """Filters jobs matching targeted keywords or locations."""
-    shortlist = []
-
-    for job in job_list:
-        title = job.get("jobTitle", "")
-        company = job.get("companyName", "")
-        location = job.get("jobLocation", "")
-        deadline = job.get("deadline", "N/A")
-        job_id = job.get("jobId")
-
-        combined_text = f"{title} {company}".lower()
-
-        keyword_match = any(kw.lower() in combined_text for kw in TARGET_KEYWORDS)
-
-        location_match = True
-        if PREFERRED_LOCATIONS:
-            location_match = any(
-                loc.lower() in location.lower() for loc in PREFERRED_LOCATIONS
-            )
-
-        if keyword_match and location_match:
-            job_url = f"https://jobs.bdjobs.com/jobdetails.asp?id={job_id}"
-            shortlist.append(
-                {
-                    "title": title,
-                    "company": company,
-                    "location": location or "Not Specified",
-                    "deadline": deadline,
-                    "url": job_url,
-                }
-            )
-
-    return shortlist
-
-
-def send_telegram_digest(jobs):
-    """Formats and dispatches the shortlist to Telegram."""
+def analyze_with_ai(jobs):
+    """Sends the job list and your profile to Gemini to do the recruiter evaluation."""
     if not jobs:
-        message = "📌 *BDjobs Daily Digest*\nNo new matching positions found today."
-    else:
-        message = f"🎯 *BDjobs Daily Shortlist ({len(jobs)} Found)*\n\n"
-        for i, job in enumerate(jobs[:10], 1):
-            message += (
-                f"*{i}. {job['title']}*\n"
-                f"🏢 {job['company']}\n"
-                f"📍 {job['location']} | ⏳ Deadline: {job['deadline']}\n"
-                f"🔗 [View & Apply]({job['url']})\n\n"
-            )
+        return "No jobs fetched today."
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    # Format the jobs into a clean text block for the AI to read
+    job_text_block = ""
+    for job in jobs:
+        title = job.get("jobTitle", "N/A")
+        company = job.get("companyName", "N/A")
+        location = job.get("jobLocation", "N/A")
+        exp = job.get("experience", "N/A")
+        job_id = job.get("jobId")
+        job_url = f"https://jobs.bdjobs.com/jobdetails.asp?id={job_id}"
+        
+        job_text_block += f"Title: {title}\nCompany: {company}\nLocation: {location}\nExperience: {exp}\nURL: {job_url}\n---\n"
+
+    # Combine your prompt with today's job data
+    full_prompt = RECRUITER_PROMPT + "\n\nTODAY'S JOBS TO EVALUATE:\n" + job_text_block
+
+    # Call the Gemini 2.5 Flash API directly
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
+        "contents": [{"parts": [{"text": full_prompt}]}],
+        "generationConfig": {"temperature": 0.2} # Low temperature keeps it highly analytical
     }
 
-    res = requests.post(url, json=payload)
-    if res.status_code == 200:
-        print("Digest successfully sent to Telegram.")
-    else:
-        print(f"Failed to send Telegram message: {res.text}")
+    try:
+        res = requests.post(gemini_url, json=payload, headers={"Content-Type": "application/json"})
+        res.raise_for_status()
+        data = res.json()
+        ai_response = data["candidates"][0]["content"]["parts"][0]["text"]
+        return ai_response
+    except Exception as e:
+        print(f"AI Evaluation Failed: {e}")
+        return f"AI Evaluation Failed. Raw jobs count: {len(jobs)}"
+
+
+def send_telegram_digest(ai_markdown_text):
+    """Sends the AI-curated Markdown response to Telegram."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    # Telegram max message length is 4096. If the AI writes a very long analysis, split it.
+    chunks = [ai_markdown_text[i:i+4000] for i in range(0, len(ai_markdown_text), 4000)]
+    
+    for chunk in chunks:
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": chunk,
+            "parse_mode": "Markdown", # Parses the AI's bolding and links natively
+            "disable_web_page_preview": True,
+        }
+        res = requests.post(url, json=payload)
+        if res.status_code != 200:
+            print(f"Failed to send chunk: {res.text}")
+        else:
+            print("Digest chunk sent successfully.")
 
 
 if __name__ == "__main__":
-    jobs = fetch_bdjobs()
-    shortlisted = filter_jobs(jobs)
-    send_telegram_digest(shortlisted)
+    print("Fetching jobs...")
+    raw_jobs = fetch_bdjobs()
+    
+    print("Analyzing jobs with Gemini AI...")
+    ai_shortlist = analyze_with_ai(raw_jobs)
+    
+    print("Dispatching to Telegram...")
+    send_telegram_digest(ai_shortlist)
