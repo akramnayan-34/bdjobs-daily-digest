@@ -14,11 +14,7 @@ from jobdigest.telegram_client import send_telegram_digest
 STATE_PATH = os.getenv("STATE_PATH", "state.json")
 
 NGO_KEYWORDS = [
-    "ngo", "development", "program", "programme", "project", "social",
-    "monitoring", "meal", "officer", "coordinator", "protection",
-    "research", "safeguarding", "humanitarian", "foundation", "education",
-    "consultant", "facilitator", "field", "gender", "inclusion",
-    "advocacy", "partnership", "community",
+    "ngo", "development",
 ]
 
 # Cap on how many jobs we fetch full descriptions + send to the LLM for,
