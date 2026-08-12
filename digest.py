@@ -122,7 +122,7 @@ def analyze_with_ai(jobs):
     # 2. SEND TO AI
     full_prompt = RECRUITER_PROMPT + "\n\nTODAY'S JOBS TO EVALUATE:\n" + job_text_block
 
-    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
         "generationConfig": {"temperature": 0.2} 
