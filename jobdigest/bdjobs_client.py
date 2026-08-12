@@ -78,6 +78,15 @@ def fetch_bdjobs_list() -> list:
                       f"{str(data)[:800]}")
                 break  # no more pages
 
+            # DEBUG: page_jobs is non-empty -- show exactly what one
+            # job entry looks like, since the field names assumed below
+            # (e.g. "jobId") may not match the real response.
+            print(f"DEBUG: page_jobs found {len(page_jobs)} entries "
+                  f"(cat={cat_id} page={page}). Sample entry keys: "
+                  f"{list(page_jobs[0].keys()) if isinstance(page_jobs[0], dict) else type(page_jobs[0])}")
+            print(f"DEBUG: sample entry (first 500 chars): "
+                  f"{str(page_jobs[0])[:500]}")
+
             new_count = 0
             for job in page_jobs:
                 job_id = job.get("jobId")
