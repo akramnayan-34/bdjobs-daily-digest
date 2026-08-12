@@ -41,8 +41,9 @@ Evaluate the following jobs and return ONLY the final Markdown output:
 
 
 def fetch_bdjobs():
-    """Fetches the latest job listings from the BDjobs Gateway API."""
-    url = "https://gateway.bdjobs.com/recruitment-account-test/api/JobSearch/GetJobSearch?isPro=1&rpp=50&pg=1"
+    """Fetches the latest job listings strictly for the NGO/Development category."""
+    # Notice the &fcatId=12 added to the end of the URL
+    url = "https://gateway.bdjobs.com/recruitment-account-test/api/JobSearch/GetJobSearch?isPro=1&rpp=50&pg=1&fcatId=12"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
@@ -56,41 +57,59 @@ def fetch_bdjobs():
 
 
 def analyze_with_ai(jobs):
-    """Sends the job list and your profile to Gemini to do the recruiter evaluation."""
+    """Pre-filters for NGO keywords, then sends to Gemini AI."""
     if not jobs:
         return "No jobs fetched today."
 
-    # Format the jobs into a clean text block for the AI to read
     job_text_block = ""
+    
+    # 1. THE FAILSAFE PRE-FILTER
+    # Only keep jobs that have these core words in the title or company name
+    ngo_keywords = [
+        "ngo", "development", "program", "project", "social", 
+        "monitoring", "meal", "officer", "coordinator", "protection", 
+        "research", "safeguarding", "humanitarian", "foundation"
+    ]
+    
+    valid_jobs = 0
     for job in jobs:
         title = job.get("jobTitle", "N/A")
         company = job.get("companyName", "N/A")
         location = job.get("jobLocation", "N/A")
         exp = job.get("experience", "N/A")
         job_id = job.get("jobId")
-        job_url = f"https://jobs.bdjobs.com/jobdetails.asp?id={job_id}"
         
+        # Combine title and company name to check against our keywords
+        combined_text = f"{title} {company}".lower()
+        
+        # If the job doesn't contain at least one of our NGO keywords, skip it entirely
+        if not any(kw in combined_text for kw in ngo_keywords):
+            continue 
+            
+        job_url = f"https://jobs.bdjobs.com/jobdetails.asp?id={job_id}"
         job_text_block += f"Title: {title}\nCompany: {company}\nLocation: {location}\nExperience: {exp}\nURL: {job_url}\n---\n"
+        valid_jobs += 1
 
-    # Combine your prompt with today's job data
+    if valid_jobs == 0:
+        return "No matching NGO/Development jobs found in today's batch."
+
+    # 2. SEND TO AI
     full_prompt = RECRUITER_PROMPT + "\n\nTODAY'S JOBS TO EVALUATE:\n" + job_text_block
 
-    # Call the Gemini 2.5 Flash API directly
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
-        "generationConfig": {"temperature": 0.2} # Low temperature keeps it highly analytical
+        "generationConfig": {"temperature": 0.2} 
     }
 
     try:
         res = requests.post(gemini_url, json=payload, headers={"Content-Type": "application/json"})
         res.raise_for_status()
         data = res.json()
-        ai_response = data["candidates"][0]["content"]["parts"][0]["text"]
-        return ai_response
+        return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         print(f"AI Evaluation Failed: {e}")
-        return f"AI Evaluation Failed. Raw jobs count: {len(jobs)}"
+        return f"AI Evaluation Failed. Pre-filtered jobs sent to AI: {valid_jobs}"
 
 
 def send_telegram_digest(ai_markdown_text):
